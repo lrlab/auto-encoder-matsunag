@@ -100,12 +100,12 @@ def evaluate_data(testdata, model):
 
 def main(args):
     if args.load_vocab:
-        with open(args.vocab) as vocab_file:
+        with open(args.vocab, "rb") as vocab_file:
             vocab = pickle.load(vocab_file)
     else:
         vocab = make_vocabulary(args.source, args.word_threshold)
         if args.save_vocab:
-            with open(args.vocab, "w") as vocab_file:
+            with open(args.vocab, "wb") as vocab_file:
                 pickle.dump(vocab, vocab_file)
     print("vocabulary done: {0} words".format(len(vocab)))
 
@@ -177,13 +177,13 @@ def main(args):
             print("epoch {0}: loss={1}".format(epoch, loss_value))
     
     if args.debug:
-        index_to_vocab={vocab[x]:x for x in vocab}
+        index_to_vocab = {vocab[x]: x for x in vocab}
         for i, weights in enumerate(model.hidden_layer.W.data):
             print("weights ", i)
             most_weights = [(list(weights).index(x), x) for x in sorted(weights, reverse=True)][:10]
             for w in most_weights:
                 # print(w)
-                print("{0} ({1})".format(index_to_vocab[w[0]], w[1]))
+                print("{0} ({1:.3f})".format(index_to_vocab[w[0]], w[1]))
             
     # print(model.hidden_layer.W.data)
     # print(model.hidden_layer.W.data.shape)
