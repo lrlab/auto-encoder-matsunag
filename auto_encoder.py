@@ -55,7 +55,7 @@ class AutoEncoder(Chain):
                                           )
 
     def __call__(self, input, pretrain=False):
-        h = functions.relu(self.hidden_layer(input))
+        h = functions.tanh(self.hidden_layer(input))
         if pretrain:
             return functions.tanh(self.reconstruct_layer(h))
         else:
