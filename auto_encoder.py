@@ -29,6 +29,7 @@ def parse_args():
     p.add_argument("source", help="source file")
     p.add_argument("--word_threshold", default=def_threshold, type=int, help="minimum occurring number to be added in the vocablary")
     p.add_argument("--net_threshold", default=def_network, type=float, help="loss value to end learning")
+    p.add_argument("--pre_max_epoch", type=int, default=def_maxepoch, help="max number to stop iteration in pre-training")
     p.add_argument("--max_epoch", type=int, default=def_maxepoch, help="max number to stop iteration")
     p.add_argument("--function", default=def_function, help="to be appeared...")
     p.add_argument("--network_size", type=int, default=def_net_size, help="size of hidden layer")
@@ -37,13 +38,13 @@ def parse_args():
     p.add_argument("--save_vocab", action="store_true", default=False, help="save vocabulary (pickle format)")
     p.add_argument("--vocab", help="(to be) restored vocabulary (pickle format)")
     p.add_argument("--mini_batch", type=int, default=def_batch_size, help="minibatch number")
-    p.add_argument("--no_mini_batch", action="store_true", default=False, help="no minibatch number")
+    p.add_argument("--yes_mini_batch", action="store_true", default=False, help="activate minibatch")
     p.add_argument("--no_pretraining", action="store_true", default=False, help="train a model without pretraining (auto-encoder)")
     p.add_argument("--debug", action="store_true", default=False, help="print iroiro na mono")
-    
+
     args = p.parse_args()
     return args
-    
+
 
 class AutoEncoder(Chain):
     def __init__(self, input_size, network_size):
@@ -121,18 +122,10 @@ def main(args):
             vectors.append(vector)
     print("vectors done")
 
-    # train_source = Variable(numpy.array(vectors[:args.train_size], dtype=numpy.float32))
-    # train_target = Variable(numpy.array(labels[:args.train_size], dtype=numpy.float32))
-    # test_source = Variable(numpy.array(vectors[args.train_size:], dtype=numpy.float32))
-    # test_target = Variable(numpy.array(labels[args.train_size:], dtype=numpy.float32))
-
     train_source = numpy.array(vectors[:args.train_size], dtype=numpy.float32)
     train_target = numpy.array(labels[:args.train_size], dtype=numpy.float32)
     test_source = Variable(numpy.array(vectors[args.train_size:], dtype=numpy.float32))
     test_target = Variable(numpy.array(labels[args.train_size:], dtype=numpy.float32))
-    
-    # print(test_target.data)
-    # print(test_target.data.shape)
 
     """
     if args.function == "sigmoid":
@@ -150,18 +143,24 @@ def main(args):
     optimizer.setup(model)
     indexes = numpy.random.permutation(input_size)
     batch_size = args.mini_batch
-    if args.no_mini_batch:
-        indexes = range(input_size)
-        batch_size = input_size
 
     if not args.no_pretraining:
         print("start pre-training")
         loss_value = 1
         epoch = 0
-        while loss_value > args.net_threshold * 0.01 and epoch < args.max_epoch:
+        while loss_value > args.net_threshold and epoch < args.max_epoch:
             epoch += 1
-            for i in range(0, input_size, batch_size):
-                mini_source = Variable(train_source[indexes[i:i + batch_size]])
+            if args.yes_mini_batch:
+                for i in range(0, input_size, batch_size):
+                    mini_source = Variable(train_source[indexes[i:i + batch_size]])
+                    model.zerograds()
+                    y = model(mini_source, pretrain=True)
+                    loss = functions.mean_squared_error(y, mini_source)
+                    loss.backward()
+                    optimizer.update()
+                    loss_value = loss.data
+            else:
+                mini_source = Variable(train_source)
                 model.zerograds()
                 y = model(mini_source, pretrain=True)
                 loss = functions.mean_squared_error(y, mini_source)
@@ -169,8 +168,9 @@ def main(args):
                 optimizer.update()
                 loss_value = loss.data
 
-            if epoch % 20 == 0:
+            if args.debug and epoch % 20 == 0:
                 print("epoch {0}: loss={1}".format(epoch, loss_value))
+        print("pre-training done ({0} epochs)".format(epoch))
 
     print("start normal-training")
     loss_value = 1
@@ -178,18 +178,30 @@ def main(args):
 
     while loss_value > args.net_threshold and epoch < args.max_epoch:
         epoch += 1
-        for i in range(0, input_size, batch_size):
-            mini_source = Variable(train_source[indexes[i:i + batch_size]])
-            mini_target = Variable(train_target[indexes[i:i + batch_size]])
+        if args.yes_mini_batch:
+            for i in range(0, input_size, batch_size):
+                mini_source = Variable(train_source[indexes[i:i + batch_size]])
+                mini_target = Variable(train_target[indexes[i:i + batch_size]])
+                model.zerograds()
+                y = model(mini_source)
+                loss = functions.mean_squared_error(y, mini_target)
+                loss.backward()
+                optimizer.update()
+                loss_value = loss.data
+        else:
+            mini_source = Variable(train_source)
+            mini_target = Variable(train_target)
             model.zerograds()
             y = model(mini_source)
             loss = functions.mean_squared_error(y, mini_target)
             loss.backward()
             optimizer.update()
             loss_value = loss.data
-        if epoch % 20 == 0:
+
+        if args.debug and epoch % 20 == 0:
             print("epoch {0}: loss={1}".format(epoch, loss_value))
-    
+    print("pre-training done ({0} epochs)".format(epoch))
+
     if args.debug:
         index_to_vocab = {vocab[x]: x for x in vocab}
         for i, weights in enumerate(model.hidden_layer.W.data):
@@ -198,10 +210,6 @@ def main(args):
             for w in most_weights:
                 # print(w)
                 print("{0} ({1:.3f})".format(index_to_vocab[w[0]], w[1]))
-            
-    # print(model.hidden_layer.W.data)
-    # print(model.hidden_layer.W.data.shape)
-    # print(model.hidden_layer.b.data.shape)
 
     print("start test")
     model.zerograds()
