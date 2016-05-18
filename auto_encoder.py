@@ -57,9 +57,9 @@ class AutoEncoder(Chain):
     def __call__(self, input, pretrain=False):
         h = functions.relu(self.hidden_layer(input))
         if pretrain:
-            return functions.relu(self.reconstruct_layer(h))
+            return functions.tanh(self.reconstruct_layer(h))
         else:
-            return functions.relu(self.output(h))
+            return functions.tanh(self.output(h))
 
 
 def make_vocabulary(source_file, threshold=2):
