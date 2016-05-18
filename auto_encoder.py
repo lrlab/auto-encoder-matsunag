@@ -20,27 +20,38 @@ def parse_args():
     def_maxepoch = 500
     def_train = 10000
     def_batch_size = 100
-    p = ArgumentParser(
-    description='Auto-encoder practice',
-    usage=
-    '\n  %(prog)s source_file [options]'
-    '\n  %(prog)s -h',
-    )
+    p = ArgumentParser(description='Auto-encoder practice',
+                       usage='\n  %(prog)s source_file [options]'
+                       '\n  %(prog)s -h')
     p.add_argument("source", help="source file")
-    p.add_argument("--word_threshold", default=def_threshold, type=int, help="minimum occurring number to be added in the vocablary")
-    p.add_argument("--net_threshold", default=def_network, type=float, help="loss value to end learning")
-    p.add_argument("--pre_max_epoch", type=int, default=def_maxepoch, help="max number to stop iteration in pre-training")
-    p.add_argument("--max_epoch", type=int, default=def_maxepoch, help="max number to stop iteration")
-    p.add_argument("--function", default=def_function, help="to be appeared...")
-    p.add_argument("--network_size", type=int, default=def_net_size, help="size of hidden layer")
-    p.add_argument("--train_size", type=int, default=def_train, help="training data size. the rest of source will be test")
-    p.add_argument("--load_vocab", action="store_true", default=False, help="restore vocabulary (pickle format)")
-    p.add_argument("--save_vocab", action="store_true", default=False, help="save vocabulary (pickle format)")
-    p.add_argument("--vocab", help="(to be) restored vocabulary (pickle format)")
-    p.add_argument("--mini_batch", type=int, default=def_batch_size, help="minibatch number")
-    p.add_argument("--yes_mini_batch", action="store_true", default=False, help="activate minibatch")
-    p.add_argument("--no_pretraining", action="store_true", default=False, help="train a model without pretraining (auto-encoder)")
-    p.add_argument("--debug", action="store_true", default=False, help="print iroiro na mono")
+    p.add_argument("--word_threshold", default=def_threshold, type=int,
+                   help="minimum occurring number to be added in the vocablary")
+    p.add_argument("--net_threshold", default=def_network, type=float,
+                   help="loss value to end learning")
+    p.add_argument("--pre_max_epoch", type=int, default=def_maxepoch,
+                   help="max number to stop iteration in pre-training")
+    p.add_argument("--max_epoch", type=int, default=def_maxepoch,
+                   help="max number to stop iteration")
+    p.add_argument("--function", default=def_function,
+                   help="to be appeared...")
+    p.add_argument("--network_size", type=int, default=def_net_size,
+                   help="size of hidden layer")
+    p.add_argument("--train_size", type=int, default=def_train,
+                   help="training data size. the rest of source will be test")
+    p.add_argument("--load_vocab", action="store_true", default=False,
+                   help="restore vocabulary (pickle format)")
+    p.add_argument("--save_vocab", action="store_true", default=False,
+                   help="save vocabulary (pickle format)")
+    p.add_argument("--vocab",
+                   help="(to be) restored vocabulary (pickle format)")
+    p.add_argument("--mini_batch", type=int, default=def_batch_size,
+                   help="minibatch number")
+    p.add_argument("--yes_mini_batch", action="store_true", default=False,
+                   help="activate minibatch")
+    p.add_argument("--no_pretraining", action="store_true", default=False,
+                   help="train a model without pretraining (auto-encoder)")
+    p.add_argument("--debug", action="store_true", default=False,
+                   help="print iroiro na mono")
 
     args = p.parse_args()
     return args
@@ -48,18 +59,16 @@ def parse_args():
 
 class AutoEncoder(Chain):
     def __init__(self, input_size, network_size):
-        super(AutoEncoder, self).__init__(
-                                          hidden_layer=links.Linear(input_size, network_size),
+        super(AutoEncoder, self).__init__(hidden_layer=links.Linear(input_size, network_size),
                                           reconstruct_layer=links.Linear(network_size, input_size),
-                                          output=links.Linear(network_size, 1),
-                                          )
+                                          output=links.Linear(network_size, 1))
 
     def __call__(self, input, pretrain=False):
-        h = functions.relu(self.hidden_layer(input))
+        h = functions.sigmoid(self.hidden_layer(input))
         if pretrain:
-            return functions.tanh(self.reconstruct_layer(h))
+            return functions.sigmoid(self.reconstruct_layer(h))
         else:
-            return functions.tanh(self.output(h))
+            return functions.sigmoid(self.output(h))
 
 
 def make_vocabulary(source_file, threshold=2):
@@ -79,17 +88,26 @@ def make_vocabulary(source_file, threshold=2):
     for k, v in sorted(vocab.items(), key=lambda x: x[1], reverse=True):
         if v < threshold:
             break
-        idn += 1
         idvocab[k] = idn
+        idn += 1
     return idvocab
 
 
-def make_bow_vector_and_label(line, vocab):
+def make_bow_vectors_and_labels(source, vocab):
     # make one-hot vector ?
-    label = int(line.split()[0])
-    words = [vocab[x] for x in set(line.split()[1:]) if x in vocab]
-    vector = numpy.array([x in words for x in range(len(vocab))], dtype=numpy.int32)
-    return (label, vector)
+    labels, vectors = [], []
+    for line in source:
+        line = line.strip()
+        if not line:
+            break
+        label = int(line.split()[0])
+        words = [vocab[x] for x in set(line.split()[1:]) if x in vocab]
+        vector = numpy.zeros(len(vocab))
+        for w in words:
+            vector[w] = 1
+        labels.append([label])
+        vectors.append(vector)
+    return (labels, vectors)
 
 
 def evaluate_data(testdata, model):
@@ -112,20 +130,15 @@ def main(args):
     print("vocabulary done: {0} words".format(len(vocab)))
 
     with open(args.source, "r") as sourcefile:
-        labels, vectors = [], []
-        while True:
-            line = sourcefile.readline().strip()
-            if not line:
-                break
-            label, vector = make_bow_vector_and_label(line, vocab)
-            labels.append([label])
-            vectors.append(vector)
+        labels, vectors = make_bow_vectors_and_labels(sourcefile, vocab)
     print("vectors done")
 
     train_source = numpy.array(vectors[:args.train_size], dtype=numpy.float32)
     train_target = numpy.array(labels[:args.train_size], dtype=numpy.float32)
-    test_source = Variable(numpy.array(vectors[args.train_size:], dtype=numpy.float32))
-    test_target = Variable(numpy.array(labels[args.train_size:], dtype=numpy.float32))
+    test_source = Variable(numpy.array(vectors[args.train_size:],
+                                       dtype=numpy.float32))
+    test_target = Variable(numpy.array(labels[args.train_size:],
+                                       dtype=numpy.float32))
 
     """
     if args.function == "sigmoid":
@@ -213,10 +226,10 @@ def main(args):
 
     print("start test")
     model.zerograds()
-    predicts = model(test_source)
     test = [1 if x > 0.5 else 0 for x in model(test_source).data]
     correct = [1 for x, y in zip(test, test_target.data) if x == y]
-    print("correct: {0}/{1} ({2:.2f}%)".format(len(correct), len(test_target), len(correct)/len(test_target)*100))
+    print("correct: {0}/{1} ({2:.2f}%)".format(len(correct), len(test_target),
+                                               len(correct)/len(test_target)*100))
 
 
 if __name__ == '__main__':
