@@ -17,9 +17,9 @@ def parse_args():
     def_threshold = 2
     def_network = 0.1
     def_net_size = 100
-    def_batch_size = 100
     def_maxepoch = 500
     def_train = 10000
+    def_batch_size = 100
     p = ArgumentParser(
     description='Auto-encoder practice',
     usage=
@@ -36,7 +36,8 @@ def parse_args():
     p.add_argument("--load_vocab", action="store_true", default=False, help="restore vocabulary (pickle format)")
     p.add_argument("--save_vocab", action="store_true", default=False, help="save vocabulary (pickle format)")
     p.add_argument("--vocab", help="(to be) restored vocabulary (pickle format)")
-    p.add_argument("--mini_batch", type=int, default=def_batch_size, help="to be appeared...")
+    p.add_argument("--mini_batch", type=int, default=def_batch_size, help="minibatch number")
+    p.add_argument("--no_mini_batch", action="store_true", default=False, help="no minibatch number")
     p.add_argument("--no_pretraining", action="store_true", default=False, help="train a model without pretraining (auto-encoder)")
     p.add_argument("--debug", action="store_true", default=False, help="print iroiro na mono")
     
@@ -120,8 +121,13 @@ def main(args):
             vectors.append(vector)
     print("vectors done")
 
-    train_source = Variable(numpy.array(vectors[:args.train_size], dtype=numpy.float32))
-    train_target = Variable(numpy.array(labels[:args.train_size], dtype=numpy.float32))
+    # train_source = Variable(numpy.array(vectors[:args.train_size], dtype=numpy.float32))
+    # train_target = Variable(numpy.array(labels[:args.train_size], dtype=numpy.float32))
+    # test_source = Variable(numpy.array(vectors[args.train_size:], dtype=numpy.float32))
+    # test_target = Variable(numpy.array(labels[args.train_size:], dtype=numpy.float32))
+
+    train_source = numpy.array(vectors[:args.train_size], dtype=numpy.float32)
+    train_target = numpy.array(labels[:args.train_size], dtype=numpy.float32)
     test_source = Variable(numpy.array(vectors[args.train_size:], dtype=numpy.float32))
     test_target = Variable(numpy.array(labels[args.train_size:], dtype=numpy.float32))
     
@@ -142,6 +148,11 @@ def main(args):
     optimizer = optimizers.Adam()
     # optimizer = optimizers.SGD()
     optimizer.setup(model)
+    indexes = numpy.random.permutation(input_size)
+    batch_size = args.mini_batch
+    if args.no_mini_batch:
+        indexes = range(input_size)
+        batch_size = input_size
 
     if not args.no_pretraining:
         print("start pre-training")
@@ -149,15 +160,16 @@ def main(args):
         epoch = 0
         while loss_value > args.net_threshold * 0.01 and epoch < args.max_epoch:
             epoch += 1
-            model.zerograds()
-            y = model(train_source, pretrain=True)
-            # loss = functions.mean_squared_error(y, train_target)
-            loss = functions.mean_squared_error(y, train_source)
-            loss.backward()
-            optimizer.update()
-            loss_value = loss.data
+            for i in range(0, input_size, batch_size):
+                mini_source = Variable(train_source[indexes[i:i + batch_size]])
+                model.zerograds()
+                y = model(mini_source, pretrain=True)
+                loss = functions.mean_squared_error(y, mini_source)
+                loss.backward()
+                optimizer.update()
+                loss_value = loss.data
 
-            if epoch % 10 == 0:
+            if epoch % 20 == 0:
                 print("epoch {0}: loss={1}".format(epoch, loss_value))
 
     print("start normal-training")
@@ -166,14 +178,16 @@ def main(args):
 
     while loss_value > args.net_threshold and epoch < args.max_epoch:
         epoch += 1
-        model.zerograds()
-        y = model(train_source)
-        loss = functions.mean_squared_error(y, train_target)
-        # loss = functions.mean_squared_error(y, train_source)
-        loss.backward()
-        optimizer.update()
-        loss_value = loss.data
-        if epoch % 10 == 0:
+        for i in range(0, input_size, batch_size):
+            mini_source = Variable(train_source[indexes[i:i + batch_size]])
+            mini_target = Variable(train_target[indexes[i:i + batch_size]])
+            model.zerograds()
+            y = model(mini_source)
+            loss = functions.mean_squared_error(y, mini_target)
+            loss.backward()
+            optimizer.update()
+            loss_value = loss.data
+        if epoch % 20 == 0:
             print("epoch {0}: loss={1}".format(epoch, loss_value))
     
     if args.debug:
